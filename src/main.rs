@@ -5,6 +5,9 @@ use crate::crud::update::Update;
 use std::ptr;
 pub mod crud;
 use clap::{Parser, Subcommand};
+use core::mem::transmute_copy;
+use widestring::WideCString;
+use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
 use windows_sys::Win32::NetworkManagement::NetManagement::*;
 
 /// Simple cli to run on windows to manage local users and groups.
@@ -51,22 +54,41 @@ fn main() {
                 let mut entries_read = 0;
                 let mut total_entries = 0;
                 let resume_handle = ptr::null_mut();
+                let mut result: Vec<String> = Vec::new();
                 println!("'myapp list' was used");
-                unsafe {
-                    println!(
-                        "get list {:?}",
-                        NetUserEnum(
-                            server,
-                            0,
-                            0,
-                            &mut user_buffer_ptr,
-                            MAX_PREFERRED_LENGTH,
-                            &mut entries_read,
-                            &mut total_entries,
-                            resume_handle
-                        )
+
+                let n_status = unsafe {
+                    NetUserEnum(
+                        server,
+                        1,
+                        0,
+                        &mut user_buffer_ptr,
+                        MAX_PREFERRED_LENGTH,
+                        &mut entries_read,
+                        &mut total_entries,
+                        resume_handle,
                     )
+                };
+                dbg!(&n_status);
+                // ADD BETTER ERROR HANDLING
+                if n_status != 0 && n_status != ERROR_MORE_DATA {
+                    panic!("api failed"); // API Failed
                 }
+                let mut tmpbuffer = user_buffer_ptr;
+                // let user_info_0: USER_INFO_0 = unsafe { transmute_copy(&user_buffer_ptr) };
+                for _i in 0..entries_read as usize {
+                    // Iterate over read entries
+                    let slice: &[u8] = unsafe { std::slice::from_raw_parts(tmpbuffer, 1 as usize) };
+                    let p_user: USER_INFO_0 = unsafe { transmute_copy(&slice[0]) };
+                    let user_name_wc:WideCString = unsafe {
+                        WideCString::from_ptr_str(p_user.usri0_name)
+                    };
+                    let user_name:String = user_name_wc.to_string_lossy();
+                    // result.push(unsafe { p_user.usri0_name.as_ref().unwrap().to_string() });
+                    result.push(user_name);
+                    tmpbuffer = unsafe { tmpbuffer.add(56) };
+                }
+                println!("{:?}", result)
             }
             Crud::Delete(name) => println!("'myapp add' was used, name is: {:?}", name),
             Crud::Update(name) => println!("'myapp add' was used, name is: {:?}", name),

@@ -2,23 +2,26 @@ use crate::crud::add::Add;
 use crate::crud::delete::Delete;
 use crate::crud::list::List;
 use crate::crud::update::Update;
-use std::ptr;
+use std::{io, ptr};
 pub mod crud;
-use clap::{Parser, Subcommand};
+use clap::{Command, CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Generator, Shell};
 use core::mem::transmute_copy;
 use widestring::WideCString;
 use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
 use windows_sys::Win32::NetworkManagement::NetManagement::*;
 
 /// Simple cli to run on windows to manage local users and groups.
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[derive(Parser, Debug, PartialEq)]
+#[clap(author, version, about, long_about = None,name="wlug",trailing_var_arg=true)]
 struct Cli {
+    #[clap(long = "generate", arg_enum, value_parser)]
+    generator: Option<Shell>,
     #[clap(subcommand)]
     command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, PartialEq)]
 enum Commands {
     ///target Users
     Users {
@@ -32,16 +35,26 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, PartialEq)]
 enum Crud {
     Add(Add),
     Update(Update),
     Delete(Delete),
     List(List),
 }
+fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
+    generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
+}
 
 fn main() {
     let cli = Cli::parse();
+    if let Some(generator) = cli.generator {
+        let mut cmd = Cli::command();
+        eprintln!("Generating completion file for {:?}...", generator);
+        print_completions(generator, &mut cmd);
+    } else {
+        println!("{:#?}", cli);
+    }
     dbg!(&cli);
     match &cli.command {
         Commands::Users { crud } => match crud {
@@ -80,10 +93,9 @@ fn main() {
                     // Iterate over read entries
                     let slice: &[u8] = unsafe { std::slice::from_raw_parts(tmpbuffer, 1 as usize) };
                     let p_user: USER_INFO_0 = unsafe { transmute_copy(&slice[0]) };
-                    let user_name_wc:WideCString = unsafe {
-                        WideCString::from_ptr_str(p_user.usri0_name)
-                    };
-                    let user_name:String = user_name_wc.to_string_lossy();
+                    let user_name_wc: WideCString =
+                        unsafe { WideCString::from_ptr_str(p_user.usri0_name) };
+                    let user_name: String = user_name_wc.to_string_lossy();
                     // result.push(unsafe { p_user.usri0_name.as_ref().unwrap().to_string() });
                     result.push(user_name);
                     tmpbuffer = unsafe { tmpbuffer.add(56) };

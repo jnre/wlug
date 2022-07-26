@@ -27,3 +27,13 @@ cargo run -- --generate=zsh > /usr/local/share/zsh/site-functions/<name>
 ```
 
 have yet to test for powershell and need to rewrite code for derive style 
+
+### windows target
+
+since it contains windows api, build this on windows computer
+
+test:
+
+```bash
+cargo run --target=x86_64-pc-windows-gnu -- --generate=powershell > ./wlug
+```
